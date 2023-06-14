@@ -1,0 +1,19 @@
+﻿Species1;Species 2;Chmax1;Chmax2;Rel;Size_rat;
+974;2020;0.75;0.7;0;1.07;Calluna vulgaris+Deschampsia flexuosa
+112;116;0.45;0.4;1;1.13;Agrostis canina+Agrostis capillaris
+1290;1281;0.3;0.25;1;1.20;Carex pilulifera+Carex panicea
+2437;2426;0.55;0.256;1;2.15;Eriophorum vaginatum+Eriophorum angustifolium
+2585;2591;0.22;0.825;1;3.75;Festuca ovina+Festuca rubra
+3089;3090;0.5;0.4;1;1.25;Holcus lanatus+Holcus mollis
+6556;6557;0.55;0.44;1;1.25;Vaccinium oxycoccos+Vaccinium uliginosum
+112;1290;0.45;0.3;0;1.50;Agrostis canina+Carex pilulifera
+2437;6556;0.55;0.55;0;1.00;Eriophorum vaginatum+Vaccinium oxycoccos
+2591;2020;0.825;0.7;0;1.18;Festuca rubra+Deschampsia flexuosa
+3089;116;0.5;0.4;0;1.25;Holcus lanatus+Agrostis capillaris
+1281;2426;0.25;0.256;0;1.02;Carex panicea+Eriophorum angustifolium
+2585;3090;0.22;0.4;0;1.82;Festuca ovina+Holcus mollis
+6557;974;0.44;0.75;0;1.70;Vaccinium uliginosum+Calluna vulgaris
+;;;;;;
+;;;;;;
+;;;;;;
+;;;;;;

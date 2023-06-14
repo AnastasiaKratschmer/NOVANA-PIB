@@ -1,0 +1,17 @@
+﻿ID;Species 2;Chmax1;Chmax2;Rel;Size_rat;Species_names_lat
+6418;6422;0.325;0.275;1;1.18;Trifolium campestre+Trifolium dubium
+6418;6353;0.325;0.3;0;1.08;Trifolium dubium+Thymus pulegioides
+6353;6355;0.3;0.09;1;3.33;Thymus pulegioides+Thymus serpyllum
+4835;4823;0.25;0.468;1;1.87;Ranunculus bulbosus+Ranunculus acris
+4835;6422;0.25;0.275;0;1.10;Ranunculus bulbosus+Trifolium dubium
+4692;4673;0.575;0.3;1;1.92;Potentilla reptans+Potentilla erecta
+1416;1397;1.35;0.6;1;2.25;Centaurea scabiosa+Centaurea jacea
+112;116;0.45;0.4;1;1.13;Agrostis canina+Agrostis capillaris
+112;4823;0.45;0.468;0;1.04;Agrostis canina+Ranunculus acris
+5148;5180;0.59;1.35;1;2.29;Rumex acetosa+Rumex crispus
+1416;5180;1.35;1.35;0;1.00;Centaurea scabiosa+Rumex crispus
+4719;4721;0.225;0.15;1;1.50;Primula veris+Primula vulgaris
+4719;4673;0.225;0.3;0;1.33;Primula veris+Potentilla Erecta
+116;1397;0.4;0.6;0;1.50;Agrostis capillaris+Centaurea jacea
+6353;4721;0.3;0.15;0;2.00;Thymus pulegioides+Primula Vulgaris
+4692;5148;0.575;0.59;0;1.03;Potentilla reptans+Rumex acetosa
