@@ -1,0 +1,451 @@
+---
+title: "R Notebook"
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+---
+#Introduction
+```{r}
+#remember to load these two, or nothing will work :) 
+library(dplyr)
+library(tidyverse)
+```
+
+You also need to have some data loaded. You need pinpoint data, abiotic data, and name data.
+```{r}
+#pinpoint data
+pinpoint_2007<-read.csv("Pinpoint - Alle arter 2007.csv")
+pinpoint_2008<-read.csv("Pinpoint - Alle arter 2008.csv")
+pinpoint_2009<-read.csv("Pinpoint - Alle arter 2009.csv")
+pinpoint_2010<-read.csv("Pinpoint - Alle arter 2010.csv")
+pinpoint_2011<-read.csv("Pinpoint - Alle arter 2011.csv")
+pinpoint_2012<-read.csv("Pinpoint - Alle arter 2012.csv")
+pinpoint_2013<-read.csv("Pinpoint - Alle arter 2013.csv")
+pinpoint_2014<-read.csv("Pinpoint - Alle arter 2014.csv")
+pinpoint_2015<-read.csv("Pinpoint - Alle arter 2015.csv")
+
+#abiotic data
+abiotic <-read.csv("alledata-abiotiske.csv")
+#name data
+species_names<-read.csv(file="traits_only_name_and_id.csv",sep=";")
+```
+
+
+In this R Notebook you will find the main part of the code used in my project.
+First I will present the functions already made by MAC last year, which were used.
+These include:
+* subset_data and subset_df (subsetting data)
+* changing (changing values 1 and 0 to something very close to 1 and 0)
+* specie (subsetting data to contain only one species)
+* new_dataset and sites_set (functions to count occurences and co-occurences of two species)
+* obs_cov and obs_cov_df (calculating observed covariance)
+* expec_cov1 and exp_cov_df1 (calculating expected covariance)
+
+Then I will present the main functions that I made, combined and used.
+* new_dataset_17n and sites_set_17n (the same as new_dataset and sites_set, just with a flat prior (0.25 added to each counting category))
+* get_name (function to get species name from the species ID-number)
+* combi_func_for_cov_multiyear(extracts abiotic data and covariances for a certain species pair in a certain habitat, in a certain year.)
+* multi_year_application( applies combi_func_for_cov_multiyear for several years)
+* apply_combi_cov (applies multi_year_application for several species pairs)
+
+And then I will show a few functions that may be helpful in some situations but not necessarily in others.
+* make_combinations(makes a list of lists of all combination of species pairs)
+* check_non_mv_year_site (check completeness of abiotic data)
+
+At the very end, I will suggest packages and function to use for the analysis of the data you get as output.
+
+# Functions
+
+## MAC'S FUNCTIONS:
+
+```{r}
+#These functions subsets data to only be from a certain habitat (terhabtype) and year. I used these to subset the "abiotic" dataset with itself. Made by MAC.
+
+subset_data<-function(data1, data2,year, type){
+  data<-na.omit(data1[data2$year == year & data2$terhabtype==type, ])
+  return(data)
+  
+}
+
+subset_df<-function(data1, data2,year,type){
+  
+  data<-na.omit(data1[data2[["year"]] == year & data2[["terhabtype"]] == type, ])
+  return(data)
+}
+
+```
+
+```{r}
+#Made by MAC, used to change 0 into epsilon and 1 to 1-epsilon. Can for instance be used to not divide by 0.
+changing<-function(data, epsilon){
+  data[data==0]<-epsilon
+  data[data==1]<-1-epsilon
+  return (data)
+}
+```
+
+```{r}
+#Another function made by MAC, to subset a dataset like a pinpoint dataset to only keep data with a certain species.
+specie <-function(data, a){
+  data%>%filter(ArtID==a)
+}
+```
+
+```{r}
+#MAC made this function, that was later modified by me. It takes a pinpoint dataset af "data", and 2 species and the number of pinpoints in each plot as input. It then outputs a dataframe pr site (station), that describes how many times each of the two species is observed, alone or in the same pinpoint as the the other species. 
+new_dataset<-function(data, station, artA, artB,n){
+  
+  new_data<-data.frame()
+  
+  
+  specie1<-data%>%filter(stationNr == station & ArtID==artA)
+  specie2<-data%>%filter(stationNr==station & ArtID==artB)
+  
+  specie1<-specie1[ , -c(3:5)]
+  specie2<-specie2[ ,-c(3:5)]
+  
+  
+  
+  t=intersect(specie1,specie2)%>%group_by(StedID)%>%summarise(t=length(KodeNavn), .groups="drop")
+  r=setdiff(specie1,specie2)%>%group_by(StedID)%>%summarise(r=length(KodeNavn), .groups="drop")
+  s=setdiff(specie2,specie1)%>%group_by(StedID)%>%summarise(s=length(KodeNavn), .groups="drop")
+  station=station
+  
+  new_data<-r%>%full_join(s,by="StedID")%>%full_join(t, by="StedID")
+  new_data<-replace(new_data, is.na(new_data), 0)%>%mutate(u=n-(r+s+t))%>%mutate(rt=r+t, st=s+t)
+  
+  return (new_data)
+}
+
+#This function is then applied on a series of sites, collecting them in a data frame,  with this function, also made by MAC.
+sites_set<-function(data,sites, artA,artB,n){
+  out<-list()
+  for (i in 1:length(sites)){
+    
+    out[[i]]<-new_dataset(data, sites[i], artA, artB, n)
+  }
+  return(out)
+}
+
+
+```
+
+
+```{r}
+#Made by MAC were also these functions: The first calculates the observed covariance of the two species in a datset. The other applies the first function seperately for all sites in a sites_set (made by the sites_set-function.)
+
+obs_cov<-function(data){
+  
+  N <- nrow(data)
+  result<- 1/N * (1/N*sum(data$rt*data$st) - 1/N*sum(data$rt)*1/N*sum(data$st))
+  return(result)
+}
+
+obs_cov_df<-function(sites_set, sites){
+  out<-data.frame()
+  for(i in 1:length(sites_set)){
+    
+    out[i, 1]<-sites[i]
+    out[i, 2]<-obs_cov(sites_set[[i]])
+  }
+  colnames(out)=c("site", "obs_cov")
+  
+  return(out)
+}
+```
+
+```{r}
+#Made by MAC: First, at function that calculates the expected covariance in a dataset, that contains the pinpoint summaries of a site. The second function does this for a set of sites in a siteset and puts it all into a dataframe.
+expec_cov1<-function(data, n){
+  t_mean<-mean(data$t)
+  pAB<-t_mean/n
+  
+  q_est_rt <-mean(data$rt)/n
+  q_est_st<-mean(data$st)/n
+  
+  
+  cov_AB<-t_mean -n*q_est_rt*q_est_st+ n^{2-2*n}*t_mean^{n}*(n^n*(q_est_rt+q_est_st)-2*t_mean^n)
+  
+  return (cov_AB)
+}
+
+exp_cov_df1<-function(sites_set,sites,n){
+  out<-data.frame()
+  for(i in 1:length(sites_set)){
+    
+    out[i, 1]<-sites[i]
+    out[i, 2]<-expec_cov1(sites_set[[i]],n)
+  }
+  colnames(out)=c("site", "exp_cov")
+  
+  return(out)
+}
+
+
+```
+##MY OWN FUNCTIONS:
+
+```{r}
+#heavily inspired by MAC's "new_dataset" and "sites_set"-functions I made "new_dataset_17" and "sites_set_17". These are essentially the same functions, just with a flat prior incorporated. Specifically, a value of 0.25 was added to each counting category to avoid cases where observed covariances would be equal to zero. Initially, I perceived this adjustment as perceived as important, but later I realized that it was probably unnecessary. Although I failed to go back to using the generic versions of these functions, it is unlikely that this oversight had a substantial impact on the results.
+
+new_dataset_17n<-function(data, station, artA, artB,n=17){
+  
+  new_data<-data.frame()
+  
+  
+  specie1<-data%>%filter(stationNr == station & ArtID==artA)
+  specie2<-data%>%filter(stationNr==station & ArtID==artB)
+  
+  specie1<-specie1[ , -c(3:5)]
+  specie2<-specie2[ ,-c(3:5)]
+  
+  
+  
+  t=intersect(specie1,specie2)%>%group_by(StedID)%>%summarise(t=length(KodeNavn), .groups="drop")
+  r=setdiff(specie1,specie2)%>%group_by(StedID)%>%summarise(r=length(KodeNavn), .groups="drop")
+  s=setdiff(specie2,specie1)%>%group_by(StedID)%>%summarise(s=length(KodeNavn), .groups="drop")
+  
+  new_data<-r%>%full_join(s,by="StedID")%>%full_join(t, by="StedID")
+  new_data[ ,ncol(new_data)+1]<-station
+  colnames(new_data[5])<-c("station")
+  new_data<-replace(new_data, is.na(new_data), 0)%>%mutate(r=r+0.25)%>%mutate(s=s+0.25)%>% mutate(t=t+0.25)%>%mutate(u=n-(r+s+t))%>%mutate(rt=r+t, st=s+t)
+  
+  return (new_data)
+} 
+  
+sites_set_17n<-function(data,sites, artA,artB,n=17){
+  out<-list()
+  for (i in 1:length(sites)){
+    
+    out[[i]]<-new_dataset_17n(data, sites[i], artA, artB, n)
+  }
+  return(out)
+}
+
+```
+
+```{r}
+#this function takes a dataset containing a species ID column (ArtID), a column with Danish name ($NavnDansk) and a column with Latin name ($LatArt) as input. It also takes a species ID and whether you want the name in Danish or Latin as input. This function was made to help keeping track of the output of the more complicated functions that follow later.
+
+get_name<-function(name_id_data, id, lan="lat"){
+  row<-name_id_data %>% filter(ArtID==id) #filter the row where the ArtID-col is equal to the wanted species id.
+  if (lan=="dan"){
+    name<-row$NavnDansk #if you want it in danish or "lat" we return it that way
+  }
+  if (lan=="lat"){
+    name<-row$LatArt 
+  }
+  return(name)
+  }
+
+```
+
+```{r}
+# This is pretty much the main function of the project. It chooses the right pinpoint data based on the year. Then it subsets the abiotic dataset to get the right sites (for that year and habitat type). Then it extracts some abiotic information for the sites with the right habitat type. Then it subsets the pindata to only contain data for the two chosen species and sites. Then it filters the abiotic data to only be the right sites (here the overlap sites of the two species) as well. Then, the observed and expected covariances are calculated, as well as the normalized covariance difference. Then the covariance and abiotic data is merged together. So the output ends up being the covariance data and abiotic data for all instances of the two chosen species in a habitat, for a certain year.
+
+combi_func_for_cov_multiyear<-function(species1,species2,hab_type,year,abio_data=abiotiske, n=17){
+  #choose pindata for the right year!
+  pin_data <- NULL
+  pinpoint_variable <- paste0("pinpoint_", year)
+  if (exists(pinpoint_variable)) {
+  pin_data <- get(pinpoint_variable)
+  } else {
+  print(paste("Error: No pinpoint data defined for the year", year, ". Please load your pinpoint data with the name pinpoint_", year))
+  }
+  
+  #now we know which pinpoints we're using!
+  
+  abio_subset_df_for_hab_selection<-subset_data(abio_data, abio_data, year, hab_type) #subset abiotic data to get the right sites (right year and habtype) but not to get abiotics because there we want averages over several years.
+  abio_subset_df <- abio_data[abio_data$terhabtype == hab_type, ] #subset of abiotics only filtering on the hab_type, so we can get averages of abitic data for a site over several years.
+  
+  
+   n_dep<-abio_subset_df%>%dplyr::select(site, plot, terhabtype, Ndep)%>%filter(Ndep!="mv")%>%mutate(across(Ndep, as.double))%>%group_by(site)%>%mutate(N_dep=mean(Ndep))%>%dplyr::distinct(site, N_dep) #calculate mean N-dep pr site in the subset for abio.
+  
+  species_nr<-abio_subset_df%>% filter(year==year)%>%dplyr::select(site, plot, terhabtype, antalarter,year)%>%filter(antalarter!="mv")%>%mutate(across(antalarter, as.double))%>%group_by(site)%>%mutate(species_nr=mean(antalarter))%>%dplyr::distinct(site, species_nr) #get average of number of species in each plot in the site, only for the sought after year. 
+  
+  vegh<-abio_subset_df%>% filter(year==year)%>%dplyr::select(site, plot, terhabtype, vegetationshoejde,year)%>%filter(vegetationshoejde!="mv")%>%mutate(across(vegetationshoejde, as.double))%>%group_by(site)%>%mutate(vegh=mean(vegetationshoejde))%>%dplyr::distinct(site, vegh)
+  
+  nedb<-abio_subset_df%>%dplyr::select(site, plot, terhabtype,nedbør,year)%>%filter(nedbør!="mv"& nedbør !="mv2")%>%mutate(across(nedbør, as.double))%>%group_by(site)%>%mutate(nedb=mean(nedbør))%>%dplyr::distinct(site, nedb)
+  
+  
+   naer<-abio_subset_df%>%dplyr::select(site, plot, terhabtype,pEnaeringsratio, year)%>%filter(pEnaeringsratio!="mv"& pEnaeringsratio !="mv2")%>%mutate(across(pEnaeringsratio, as.double))%>%group_by(site)%>%mutate(naer=mean(pEnaeringsratio))%>%dplyr::distinct(site, naer)
+   
+   graze<-abio_subset_df%>% filter(year<=year)%>%dplyr::select(site, plot, terhabtype,graesningbin, year)%>%filter(graesningbin!="mv"& graesningbin !="mv2")%>%mutate(across(graesningbin, as.double))%>%group_by(site)%>%mutate(graze=mean(graesningbin))%>%dplyr::distinct(site, graze)
+   
+   ph<-abio_subset_df%>%dplyr::select(site, plot, terhabtype,pHjord, year)%>%filter(pHjord!="mv"& pHjord !="mv2")%>%mutate(across(pHjord, as.double))%>%group_by(site)%>%mutate(ph=mean(pHjord))%>%dplyr::distinct(site, ph)
+   
+   #now we have have the subsets for the right sites of the abiotic factors.
+   
+  pinpoint_data<-pin_data %>% filter(StedID %in% abio_subset_df_for_hab_selection$plot) #filter pin_data to only include plots that are in the new abiotic dataset, aka. only the right year and hab_type.
+  
+
+  species_1<-specie(pinpoint_data, species1) #extract pinpoint data for species 1
+  species_2<-specie(pinpoint_data, species2) #same with species2. 
+  sites_pin<-intersect(species_1$stationNr, species_2$stationNr) #unite sites that contain both species into a list of sites. 
+  species_union<-rbind(species_1,species_2) #unite pinpoint datasets for both species. This is the dataset that the covariances can be calculated using.
+  
+  plot_in_sites<-species_union %>% group_by(stationNr)%>%summarise(plot=n()) #get a list of how many plots there in each site, for weighting-purposes.
+  colnames(plot_in_sites)<-c("site","plots") #give good names.
+  if (length(sites_pin)==0){
+    covari_with_nit<-data.frame() #just add nothing, if there is nothing to add and don't go into the next loop :I
+  }else{ #if there were any pins that overlapped fot the two species, we go on to this:
+      both_species<-sites_set_17n(pinpoint_data, sites_pin, species1,species2,n) #calculate the number of r,s, t and u, with "17" pins for both species.
+      
+      tmp<-intersect(sites_pin, n_dep$site) # find the sites that are in sites_pin(sites for the species) and in the sites of n_dep.
+      n_dep<-n_dep%>%dplyr::filter(site %in% tmp) #keep only the abiotic data for sites that are in sites_pin.
+      species_nr<-species_nr %>% dplyr::filter(site %in% tmp)
+      vegh<-vegh %>% dplyr::filter(site %in% tmp)
+      nedb<-nedb %>% dplyr::filter(site %in% tmp)
+      naer<-naer %>% dplyr::filter(site %in% tmp)
+      graze<-graze %>% dplyr::filter(site %in% tmp)
+      ph<-ph %>% dplyr::filter(site %in% tmp)
+      
+      obs<-obs_cov_df(both_species, sites_pin) #calculate covariance
+      exp<-exp_cov_df1(both_species, sites_pin, n) #calculate expected covariance
+      covar<-full_join(obs,exp, by="site") #join obs cov and exp cov :)
+      covari<-covar %>% mutate(diff1=obs_cov-exp_cov)%>%mutate(scale_diff=abs(obs_cov)+abs(exp_cov)) %>% mutate(ratio=obs_cov/changing(exp_cov, 0.0000000000001))%>% mutate(new_response=diff1/scale_diff) #that was calculating the diff between obs and exp, ratio and the new_response (the normalized covariance difference) and adding it to a dataset.
+      
+      
+      dfs <- list(covari,n_dep, species_nr, vegh, nedb, naer, graze, ph, plot_in_sites)
+      covari_with_nit <- Reduce(function(x, y) merge(x, y, by = "site"), dfs)
+     
+      if (nrow(covari_with_nit)>0){
+        covari_with_nit[ ,ncol(covari_with_nit)+1]<-year #add a col with year
+        
+      colnames(covari_with_nit)=c("site","obs_cov", "exp_cov", "diff_obs_exp","scale_diff","ratio_cov","new_response","N_dep","species_nr","vegh","nedb","naer","graze","ph","plot","year")
+        return(covari_with_nit)
+      }
+      
+    }
+}
+combi_func_for_cov_multiyear(6422,6418,"{6210}",year="2008")
+
+```
+
+```{r}
+#The following function then applies the combi_func_for_cov_multiyear for a vector of years
+multi_year_application<-function(species1,species2,hab_type,year_vector,abio_data=abiotiske, n=17){
+  holder_list_df<-data.frame()
+  for (i in year_vector){
+    result_for_year<-combi_func_for_cov_multiyear(species1,species2,hab_type,i,abio_data,n)
+    holder_list_df<-rbind(result_for_year,holder_list_df)
+  }
+  return(holder_list_df)
+}
+```
+
+```{r}
+#this function then apples multi_year_application on a list of species.This list needs to be a list of lists, where each list contains a species labeled a, a species labeled b, and whether the species are related or not, labelled c. You van choose if you want to transform your output response variable to fit into a beta-distributuon. The output from this function is a set of datasets, that need to be merged if you want them in one dataset. For this, you can use the dplyr function bind_rows.
+apply_combi_cov<-function(species_list, hab_type, year_vector, beta_trans=FALSE){
+  holder_list<-list()
+  names_vector<-c()
+  for(i in (1:length(species_list))){ #for each species pair
+    species_1<-species_list[[i]]$a #extract the species1 because we need it to call the next func in this func
+    species_2<-species_list[[i]]$b #extract species 2
+    related<-species_list[[i]]$c #are the two species related 1 or 0.
+    func_call<-multi_year_application(species_1,species_2,hab_type,year_vector)
+    if (nrow(func_call)>0){
+      names_vector[[length(names_vector)+1]]<-paste(get_name(species_names,species_1),"_", get_name(species_names,species_2),"_",hab_type,"_cov", sep="")
+      func_call[ ,ncol(func_call)+1]<-species_1 #fill species_1's ID into a column so we always have it
+      func_call[ ,ncol(func_call)+1]<-species_2 #same with species_2
+      func_call[ ,ncol(func_call)+1]<-hab_type #same but with hab_type
+      func_call[ ,ncol(func_call)+1]<-related #same with relation
+      
+      
+      colnames(func_call)<-c("site","obs_cov","exp_cov","diff_obs_exp","diff_exp_obs","ratio_cov","new_response","N_dep","species_nr","vegh","nedb","naer","graze","ph","year","plots","species1","species2","hab_type","related") #give the columns descriptive names
+      
+      func_call<-func_call %>% group_by(species1,species2) %>% mutate(first_species=min(species1,species2),sec_species=max(species1,species2)) %>% mutate(both_species=paste(first_species,"_",sec_species,sep='')) %>% subset(select = -c(first_species, sec_species))
+      if (beta_trans==TRUE){
+      func_call<-func_call%>% mutate(beta_resp=((ifelse(new_response == (-1), (-0.999999), ifelse(new_response==1,0.99999999, new_response)) + 1)/2))
+      } 
+    holder_list[[i]]<-func_call #add the whole data frame to the list of dataframes
+      
+    }
+    
+  }
+  names(holder_list)<-names_vector #actually name each dataset according to the species in it
+  return(holder_list)
+}
+
+apply_combi_cov(species_4030_new,"{4030}",years,beta_trans=FALSE)
+```
+
+
+
+##BONUS-FUNCTIONS:
+
+```{r}
+#this bonus function will make a list of all different combinations of species from a list of species, and whether the species are related. The output can be used as the species_list in apply_combi_cov. It ended up not being used in this project, though.
+
+make_combinations<-function(list_of_species){
+  holder_df<-data.frame()
+  for (i in 1:length(list_of_species)){
+    for (j in (i):length(list_of_species)){
+      spec1<-as.character(list_of_species[i])
+      spec2<-as.character(list_of_species[j])
+      if (spec1 != spec2){
+        holder_df[nrow(holder_df)+1,1]<-spec1
+        holder_df[nrow(holder_df),2]<-spec2
+        holder_df[nrow(holder_df),3]<-get_name(species_names,spec1)
+        holder_df[nrow(holder_df),4]<-get_name(species_names,spec2)
+        
+      }
+      
+      }
+    }
+ related <- startsWith(holder_df$V3, word(holder_df$V4,1))
+ holder_df<-cbind(holder_df,related)
+ holder_df<-holder_df %>% mutate(list_format=paste("list(a=",V1,",b=",V2,",c=",as.integer(as.logical(related)),")",sep = ""))
+ 
+ merged_list<-unlist(holder_df$list_format)
+ merged_list<-paste(merged_list,sep='',collapse=',')
+ merged_list<-paste("list(",merged_list,")",sep='')
+ 
+ nested_list <- eval(parse(text = merged_list))
+ return(nested_list)
+}
+
+```
+
+
+```{r}
+#checks the completeness of the abiotic data. How big a part of the site and year combinations have a value that is not "mv"? Can be relevant in selection of which abiotic predictors you want to include.
+check_non_mv_year_site <- function(abio_d, vec_abio, pindata) {
+  all_pinpoint_data <- pindata %>% mutate(combi = paste(stationNr,"_", Year,sep = ""))
+  unique_combis_pin <- unique(all_pinpoint_data$combi)
+  n_unique_pins <- length(unique_combis_pin)
+  #print(head(unique_combis_pin))
+  output_vals=c()
+
+  for (factor in vec_abio) {
+    abio_d_filtered <- abio_d %>% filter(!!sym(factor)!='mv') 
+    abio_d_filtered <- abio_d_filtered %>% mutate(combi = paste(site,"_", year, sep = ""))
+    uniqe_combis_abio <- unique(abio_d_filtered$combi)
+    both_there <- unique_combis_pin %in% uniqe_combis_abio
+    both_there_n <- sum(both_there == TRUE)
+    output_vals <- c(output_vals,both_there_n/n_unique_pins)
+  }
+  output_df<-data.frame(variable=colnames(abio_d), completeness=output_vals)
+  print("!")
+  print(output_df)
+}
+```
+
+# PACKAGE SUGGESTIONS TO ANALYZE OUTPUT
+
+```{r}
+library(glmmTMB)
+library(performance)
+library(lmerTest)
+
+glmmTMB::glmmTMB() #this function can make generalized linear models with reponse variable distributions from many families
+
+performance::check_collinearity() #this function can get you the VIFs on the outputs of the glmmTMB::glmmTMB()-function.
+
+lmerTest::step() #can help you do stepwise selection on the the outputs of the glmmTMB::glmmTMB()-function.
+
+
+
+```
+
